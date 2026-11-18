@@ -40,7 +40,7 @@ class Client:
         status, body = self.request('POST', '/api/login', {'username': name, 'password': password})
         check(status == 200 and body['username'] == name, name + ' login')
 
-anonymous, alice, bob, admin = Client(), Client(), Client(), Client()
+anonymous, alice, bob, admin, manager = Client(), Client(), Client(), Client(), Client()
 check(anonymous.request('GET', '/api/tasks')[0] == 401, 'anonymous list denied')
 for method in ('POST', 'PATCH', 'DELETE'):
     path = '/api/tasks' if method == 'POST' else '/api/tasks/1'
@@ -49,11 +49,28 @@ check(anonymous.request('POST', '/api/login', {'username': 'alice', 'password': 
 alice.login('alice', 'Alice-demo-2026!')
 bob.login('bob', 'Bob-demo-2026!')
 admin.login('admin', 'Admin-demo-2026!')
+manager.login('manager', 'Manager-demo-2026!')
 status, a = alice.request('POST', '/api/tasks', {'title': 'HTTP Alice fixture', 'description': 'Original'})
 check(status == 201 and a['owner'] == 'alice' and a['status'] == 'todo', 'creation status and server ownership')
 status, b = bob.request('POST', '/api/tasks', {'title': 'HTTP Bob fixture'})
 check(status == 201, 'Bob fixture created')
 try:
+    for leader in (admin, manager):
+        status, accounts = leader.request('GET', '/api/users')
+        check(status == 200 and [u['username'] for u in accounts] == ['admin', 'alice', 'bob', 'manager'] and all(set(u) == {'username', 'role'} for u in accounts), 'safe assignable account directory')
+        status, assigned = leader.request('POST', '/api/tasks', {'title': 'Assignment HTTP fixture', 'assignee': 'alice'})
+        check(status == 201 and assigned['owner'] == 'alice' and assigned['status'] == 'todo', 'leader creates assigned task')
+        try:
+            check(alice.request('GET', '/api/tasks/' + str(assigned['id']))[0] == 200, 'assignee can access new task')
+            status, moved = leader.request('PATCH', '/api/tasks/' + str(assigned['id']), {'assignee': 'bob'})
+            check(status == 200 and moved['owner'] == 'bob', 'leader reassigns task')
+            check(alice.request('GET', '/api/tasks/' + str(assigned['id']))[0] == 404, 'previous assignee loses access')
+            check(bob.request('GET', '/api/tasks/' + str(assigned['id']))[0] == 200, 'new assignee gains access')
+        finally:
+            leader.request('DELETE', '/api/tasks/' + str(assigned['id']))
+    check(alice.request('GET', '/api/users')[0] == 403, 'regular user cannot browse directory')
+    check(alice.request('POST', '/api/tasks', {'title': 'Forbidden assignment', 'assignee': 'bob'})[0] == 403, 'regular user cannot assign')
+    check(manager.request('POST', '/api/tasks', {'title': 'Invalid assignment', 'assignee': 'missing'})[0] == 400, 'unknown assignee rejected')
     check(all(t['owner'] == 'alice' for t in alice.request('GET', '/api/tasks')[1]), 'Alice task isolation')
     check(all(t['owner'] == 'bob' for t in bob.request('GET', '/api/tasks')[1]), 'Bob task isolation')
     for method in ('GET', 'PATCH', 'DELETE'):
@@ -86,4 +103,5 @@ finally:
         admin.request('DELETE', '/api/tasks/' + str(task['id']))
     bob.request('POST', '/api/logout')
     admin.request('POST', '/api/logout')
+    manager.request('POST', '/api/logout')
 print(f'\n{checks} live HTTP checks passed; 0 failed.')
