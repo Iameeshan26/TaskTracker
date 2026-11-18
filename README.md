@@ -1,35 +1,78 @@
 # Task Tracker
 
-A complete local task-management application with a public homepage, secure sign-in, private user workspaces, and administrator and manager overviews grouped by task assignee. Users can create, edit, filter, and delete tasks; administrators and managers can manage and assign every user's tasks. All data lives in memory and resets when the backend restarts.
+A full-stack task management web application built with **Spring Boot, React, and TypeScript**. It provides session-based authentication, personal task workspaces, and role-based task management for administrators and managers.
 
-## Quick start
+Tasks are stored in memory, as required by the take-home assignment. Task data and sessions reset when the backend restarts.
 
-Prerequisites: **Java 21**, **Node.js 24 LTS or newer**, and npm. Maven **3.9.11** is downloaded automatically by the included Maven Wrapper; a separate Maven installation is unnecessary. First installation requires internet access.
+## Features
 
-From the repository root, start the backend in one terminal:
+- Public homepage with project information and a login link.
+- Username/password login and session-based logout.
+- Personal task dashboard for regular users.
+- Create, edit, delete, and filter tasks by status.
+- Administrator and manager dashboards showing tasks grouped by assignee.
+- Authorized task assignment and reassignment by administrators and managers.
+- Backend-enforced access controls: regular users cannot access another user's tasks.
+- Input validation, consistent JSON errors, and automated tests.
 
-```sh
+### Task statuses
+
+`todo` · `in_progress` · `done`
+
+New tasks start with `todo`.
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Backend | Java 21, Spring Boot 3.5.16, Spring Web |
+| Authentication and security | Spring Security, BCrypt, HTTP sessions, CSRF protection |
+| Frontend | React 19.1.1, TypeScript 5.9.3, Vite 8.3.8, React Router 7.18.5 |
+| Storage | In-memory Java concurrent collections |
+| Backend testing | JUnit 5, Spring Boot Test, MockMvc, Spring Security Test |
+| Frontend testing | Vitest, React Testing Library |
+| Build tools | Maven Wrapper, npm |
+
+## Getting Started
+
+### Prerequisites
+
+- Java 21
+- Node.js 24 LTS or newer and npm
+- Internet access for initial dependency installation
+
+Maven does not need to be installed separately; the project includes a Maven Wrapper.
+
+### 1. Start the backend
+
+From the repository root:
+
+```bash
 cd backend
 ./mvnw spring-boot:run
 ```
 
-In a second terminal:
+On Windows, use `mvnw.cmd spring-boot:run` instead.
 
-```sh
+The backend runs at `http://127.0.0.1:8080`.
+
+### 2. Start the frontend
+
+Open a second terminal from the repository root:
+
+```bash
 cd frontend
 npm ci
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173/**. The backend listens on **127.0.0.1:8080**. Use the frontend URL for the application; Vite proxies `/api` to the backend so cookies and CSRF tokens stay on the same origin. Do not mix `localhost` and `127.0.0.1` in the same session.
+Open **http://127.0.0.1:5173/** in your browser.
 
-On Windows use `mvnw.cmd` instead of `./mvnw`. Check `java -version` and set `JAVA_HOME` to your Java 21 installation if needed. During implementation, Java 21 was downloaded temporarily to `/tmp/task-tracker-jdk21/Contents/Home`; on this machine it can be selected with `export JAVA_HOME=/tmp/task-tracker-jdk21/Contents/Home` while that directory exists. Install a permanent JDK for ongoing use.
+The Vite development server proxies `/api` requests to the backend. Use `127.0.0.1` consistently rather than mixing it with `localhost` in the same browser session.
 
-The repository is not published. Once hosted, clone its actual URL with `git clone <repository-url> task-tracker`, then `cd task-tracker` and use the commands above.
+## Demo Credentials
 
-## Local demo credentials
-
-These accounts are public **local demonstration fixtures only**, not real credentials. Do not deploy the demo accounts to an internet-facing environment.
+The application seeds the following **local demonstration accounts** at startup:
 
 | Username | Password | Role |
 | --- | --- | --- |
@@ -38,208 +81,178 @@ These accounts are public **local demonstration fixtures only**, not real creden
 | `admin` | `Admin-demo-2026!` | ADMIN |
 | `manager` | `Manager-demo-2026!` | MANAGER |
 
-Startup hashes the demo passwords with BCrypt before storing users in memory. Alice and Bob each receive two example tasks. Newly created tasks belong to their creator by default. Admins and managers can select an existing account in **Assign to** when creating or editing a task. The dropdown includes username and role, defaults to the current user for creation, and preselects the current assignee for editing. Reassignment moves the task into the selected user’s workspace.
+Passwords are hashed using BCrypt before being stored in memory. Alice and Bob each have two example tasks. These accounts are intended only for local demonstration and must not be deployed as production credentials.
 
-Managers use `/manager` and can view, edit, delete, and assign all team tasks, matching admins for task-management permissions. Regular users retain personal CRUD access but cannot view the user directory or assign tasks to others. Role changes and account creation are not exposed by this update.
+## Roles and Permissions
 
-**Already running the previous version?** Restart the backend to load the manager account and assignment endpoints, then refresh the frontend. As before, a backend restart resets in-memory tasks and sessions.
+| Action | USER | ADMIN | MANAGER |
+| --- | :---: | :---: | :---: |
+| View own tasks | Yes | Yes | Yes |
+| Create tasks | Yes | Yes | Yes |
+| Edit or delete own tasks | Yes | Yes | Yes |
+| View all users' tasks | No | Yes | Yes |
+| Edit or delete any task | No | Yes | Yes |
+| Assign or reassign tasks | No | Yes | Yes |
+| View user directory | No | Yes | Yes |
 
-## Stack
+Regular users work only with their own tasks. Administrators and managers can view tasks grouped by assignee and use the **Assign to** field when creating or editing tasks. Reassignment moves a task to the selected user's workspace.
 
-| Component | Version |
+## API Reference
+
+All API endpoints return JSON unless a successful response has no body (`204 No Content`). Authentication uses an HttpOnly `JSESSIONID` cookie. State-changing requests require a valid CSRF token.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/csrf` | Retrieve CSRF token and header name |
+| `POST` | `/api/login` | Authenticate a user |
+| `POST` | `/api/logout` | End the authenticated session (`204`) |
+| `GET` | `/api/me` | Retrieve current user information |
+| `GET` | `/api/users` | List user summaries (admin/manager only) |
+| `GET` | `/api/tasks` | List tasks visible to the current user |
+| `GET` | `/api/tasks?status=todo` | Filter visible tasks by status |
+| `GET` | `/api/tasks/{id}` | Retrieve an accessible task |
+| `POST` | `/api/tasks` | Create a task (`201`) |
+| `PATCH` | `/api/tasks/{id}` | Update permitted task fields |
+| `DELETE` | `/api/tasks/{id}` | Delete an accessible task (`204`) |
+
+### Task fields and validation
+
+| Field | Rules |
 | --- | --- |
-| Java source/bytecode | 21 |
-| Verified JDK | Amazon Corretto 21.0.13.1 |
-| Spring Boot | 3.5.16 |
-| Spring Web / Spring Security | 6.2.19 / 6.5.11 (Boot-managed) |
-| Spring Validation | Boot-managed Jakarta Bean Validation |
-| Maven Wrapper distribution | 3.9.11 |
-| React / React DOM | 19.1.1 |
-| React Router DOM | 7.18.5 |
-| TypeScript | 5.9.3 |
-| Vite / React plugin | 8.3.8 / 6.3.0 |
-| Vitest | 5.1.1 |
-| React Testing Library / jest-dom | 16.3.0 / 6.9.1 |
-| jsdom | 27.0.1 |
-| Storage | Java concurrent collections; no database or ORM |
+| `title` | Required; 3–100 characters after trimming |
+| `description` | Optional; maximum 500 characters |
+| `status` | `todo`, `in_progress`, or `done` |
 
-Backend tests use JUnit 5, Spring Boot Test, MockMvc, and Spring Security Test. Frontend network calls use the Fetch API. Dependency versions are pinned in `pom.xml` and `package-lock.json`. Spring Validation's Hibernate **Validator** is a validation library, not Hibernate ORM; there is no JPA or database dependency.
+Task creation automatically sets `status` to `todo`. A regular user creates tasks for themselves. Administrators and managers can additionally specify an existing account with the `assignee` field.
 
-## Tests and builds
+Example task creation request:
 
-From the repository root:
+```json
+{
+  "title": "Prepare project review",
+  "description": "Summarize completed tasks"
+}
+```
 
-```sh
+Example response:
+
+```json
+{
+  "id": 5,
+  "owner": "alice",
+  "title": "Prepare project review",
+  "description": "Summarize completed tasks",
+  "status": "todo"
+}
+```
+
+The ID shown above is illustrative and may differ at runtime.
+
+A `PATCH` request can change any nonempty subset of `title`, `description`, and `status`. Omitting a field leaves it unchanged; setting `description` to `null` or an empty string clears it. Admins and managers may also use `assignee` to reassign a task.
+
+Example status update:
+
+```json
+{
+  "status": "in_progress"
+}
+```
+
+Example assignment by an admin or manager:
+
+```json
+{
+  "assignee": "bob"
+}
+```
+
+### HTTP response codes
+
+| Code | Meaning |
+| --- | --- |
+| `200` | Successful request with response data |
+| `201` | Task created |
+| `204` | Successful deletion or logout |
+| `400` | Invalid input, malformed ID, or unsupported status |
+| `401` | Authentication required or credentials invalid |
+| `403` | Invalid/missing CSRF token or insufficient permission for a restricted action |
+| `404` | Task not found or not accessible to the current user |
+
+For privacy, an attempt by a regular user to access another user's task returns `404`, just like a nonexistent task.
+
+## Testing
+
+### Backend tests
+
+```bash
 cd backend
 ./mvnw clean verify
-cd ../frontend
+```
+
+### Frontend tests and build
+
+```bash
+cd frontend
 npm ci
 npm test
 npm run build
 ```
 
-With both servers running, execute the live HTTP checks from the repository root:
+### Live API verification
 
-```sh
+With both the backend and frontend running, execute the verification script from the repository root:
+
+```bash
 python3 scripts/verify_http.py
 ```
 
-Python 3's standard library is sufficient. The script uses real cookies and CSRF headers, creates disposable tasks, verifies both user and admin workflows, and removes its tasks. An alternate base URL can be passed as its first argument.
+The script exercises authenticated HTTP requests, CSRF handling, task operations, and role-based access using temporary tasks.
 
-The backend package is `backend/target/task-tracker-1.0.0.jar`, runnable with `java -jar backend/target/task-tracker-1.0.0.jar`. Frontend build output is `frontend/dist`. A production deployment needs a same-origin static server/reverse proxy with SPA route fallback and `/api` forwarded to the backend. The Vite development server is the documented local execution path, not a production server. For isolated verification, set `TASK_TRACKER_API_URL=http://127.0.0.1:8081` when launching Vite and pass `--server.port=8081` to the backend; the default remains port 8080.
+See [Verification Results](docs/VERIFICATION.md) for recorded test results, browser coverage, and known verification limitations.
 
-See [verification results](docs/VERIFICATION.md) for actual executed checks and browser coverage.
-
-## API contract
-
-All request/response bodies are JSON except successful `204` responses. Authentication uses the `JSESSIONID` HttpOnly session cookie. No JWT, browser localStorage, or client-controlled roles are used.
-
-| Method | Endpoint | Result |
-| --- | --- | --- |
-| GET | `/api/csrf` | Public: CSRF token and header name |
-| POST | `/api/login` | Public with CSRF: authenticate; return username and role |
-| GET | `/api/me` | Current authenticated username and role |
-| GET | `/api/users` | Admin/manager only: sorted username and role summaries, never hashes |
-| POST | `/api/logout` | Invalidate session, clear cookie/context; `204` |
-| GET | `/api/tasks` | Authorized tasks, ordered by owner then numeric ID |
-| GET | `/api/tasks?status=todo` | Authorized tasks matching a valid status |
-| GET | `/api/tasks/{id}` | One authorized task; added for explicit by-ID access |
-| POST | `/api/tasks` | Create a `todo` task; leaders may specify `assignee`; `201` |
-| PATCH | `/api/tasks/{id}` | Update title, description, status, or authorized assignee; `200` |
-| DELETE | `/api/tasks/{id}` | Delete an authorized task; `204` |
-
-Statuses are exactly `todo`, `in_progress`, and `done`. Regular users can see and mutate only their own tasks. Administrators and managers can see, mutate, and assign all tasks. Missing and inaccessible task IDs both return `404`.
-
-### Session and CSRF example
-
-These commands require curl and Python 3. Run them together in a shell. Obtain a token before login, then fetch a **fresh token after login**, because authentication rotates both the session ID and CSRF token.
-
-```sh
-base=http://127.0.0.1:5173
-cookies=$(mktemp)
-token=$(curl -fsS -c "$cookies" "$base/api/csrf" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-curl -fsS -b "$cookies" -c "$cookies" -H 'Content-Type: application/json' \
-  -H "X-CSRF-TOKEN: $token" \
-  -d '{"username":"alice","password":"Alice-demo-2026!"}' "$base/api/login"
-token=$(curl -fsS -b "$cookies" -c "$cookies" "$base/api/csrf" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-curl -fsS -b "$cookies" -H 'Content-Type: application/json' \
-  -H "X-CSRF-TOKEN: $token" \
-  -d '{"title":"Prepare the review","description":"Collect feedback"}' "$base/api/tasks"
-curl -fsS -b "$cookies" "$base/api/tasks?status=todo"
-# Replace 5 with the actual id returned by creation:
-curl -fsS -X PATCH -b "$cookies" -H 'Content-Type: application/json' \
-  -H "X-CSRF-TOKEN: $token" -d '{"status":"done"}' "$base/api/tasks/5"
-curl -fsS -X POST -b "$cookies" -H "X-CSRF-TOKEN: $token" "$base/api/logout"
-rm "$cookies"
-```
-
-Successful login:
-
-```json
-{"username":"alice","role":"USER"}
-```
-
-Created task (ID varies):
-
-```json
-{"id":5,"owner":"alice","title":"Prepare the review","description":"Collect feedback","status":"todo"}
-```
-
-PATCH accepts any nonempty subset of `title`, `description`, and `status`; admins and managers may also supply `assignee`:
-
-```json
-{"title":"Review the final draft","description":null,"status":"in_progress"}
-```
-
-Omitted fields remain unchanged. `null` or `""` clears the description. Title is trimmed, must contain 3–100 characters, and cannot be blank or null. Description is optional and limited to 500 characters. Status cannot be null or unknown. Validation applies equally to administrators and managers. Unknown fields are rejected, including `owner`, `id`, and `role`; creation rejects **any** client-supplied `status` (even `todo`). The response’s `owner` is the current assignee. Assignments must use the validated `assignee` field, never a direct `owner` override.
-
-Example admin/manager create payload:
-
-```json
-{"title":"Prepare release checklist","description":"Confirm release steps","assignee":"alice"}
-```
-
-Reassign an existing task with `{"assignee":"bob"}`. Omit `assignee` to preserve the current owner on PATCH or use the signed-in user on creation; a null creation assignee also uses the creator. Blank/unknown assignees and null/non-string PATCH assignees return 400. Valid assignment attempts by regular users return 403. All enabled accounts, including managers and admins, are eligible assignees. Reassignment does not change the task’s ID, status, title, or description unless those fields are supplied too. The previous regular-user assignee loses access immediately on the server.
-
-Errors use an `error` code and a human-readable `message`:
-
-```json
-{"error":"NOT_FOUND","message":"Task not found"}
-```
-
-| Status | Meaning |
-| --- | --- |
-| 400 | Invalid JSON, fields, filter, or malformed numeric ID |
-| 401 | Missing/expired authentication, invalid credentials, or unauthenticated mutation without CSRF |
-| 403 | Missing/invalid CSRF token, or insufficient directory/assignment permission |
-| 404 | Task does not exist or is not accessible to the current user |
-
-Login uses the same error for unknown usernames and incorrect passwords. Password hashes and internal exception traces are never returned by the application endpoints.
-
-## Architecture
+## Project Structure
 
 ```text
-backend/
-  pom.xml, mvnw, .mvn/         Reproducible Java build
-  src/main/java/com/tasktracker/
-    config/                    Spring Security and serialization configuration
-    controller/                Authentication and task HTTP endpoints
-    dto/                       Login/create request validation
-    model/                     Immutable task record
-    repository/                Concurrent task storage and immutable account directory
-    service/                   Ownership-aware operations, leader permissions, assignment validation
-    exception/                 Consistent API validation/not-found errors
-  src/main/resources/          Session/cookie/server settings
-  src/test/                    MockMvc security and contract tests
-frontend/
-  src/App.tsx                  Session restoration and protected routes
-  src/auth.ts                  Shared identity context
-  src/api.ts                   Fetch, CSRF token handling, session expiration
-  src/Home.tsx, Login.tsx       Public screens
-  src/Dashboard.tsx            User/admin list, filtering, feedback, deletion
-  src/TaskEditor.tsx            Create/edit forms with authorized user dropdown
-  src/Modal.tsx, Brand.tsx      Shared accessible UI
-  src/styles.css               Responsive layout and status styles
-  src/App.test.tsx              Essential frontend workflow tests
-  src/Assignment.test.tsx       Dropdown, reassignment, permissions and retry tests
-scripts/verify_http.py          Reproducible live HTTP checks
-docs/VERIFICATION.md            Verification evidence and known limits
+TaskTracker/
+├── backend/
+│   ├── pom.xml
+│   ├── mvnw
+│   └── src/
+│       ├── main/java/com/tasktracker/
+│       │   ├── config/
+│       │   ├── controller/
+│       │   ├── dto/
+│       │   ├── exception/
+│       │   ├── model/
+│       │   ├── repository/
+│       │   └── service/
+│       └── test/
+├── frontend/
+│   └── src/
+├── scripts/
+│   └── verify_http.py
+├── docs/
+│   └── VERIFICATION.md
+└── README.md
 ```
 
-Tasks are immutable records stored in a `ConcurrentHashMap`. An `AtomicLong` allocates IDs. Updates/deletes use atomic `compute` operations; authorization is repeated inside the mutation to avoid acting on an unchecked record. Repository snapshots do not expose mutable internal collections. User records are held in an immutable in-memory directory shared by authentication and assignment validation. Authentication receives defensive copies so credential erasure cannot clear stored BCrypt hashes. Controllers delegate task business rules to the service.
+The backend separates HTTP controllers, business logic, security, validation, and in-memory storage. The frontend separates pages, task editing, authentication state, and API communication.
 
-## Security design
+## Security
 
-- BCrypt hashes are the only password representation retained in the user store. Plaintext demo literals are bootstrap fixtures, documented for reviewers.
-- Successful authentication rotates any existing session ID, creates a fresh security context, and explicitly saves it to the HTTP session.
-- Spring Security's session-backed CSRF protection remains enabled for login, logout, and every task mutation. `/api/csrf` exposes a masked token; the browser sends it in `X-CSRF-TOKEN`. Login clears the previous token; the client fetches another before its next mutation.
-- Cookies are HttpOnly and SameSite=Strict. `Secure` defaults to false solely for loopback HTTP development; set `COOKIE_SECURE=true` behind production HTTPS. Sessions expire after 30 minutes of inactivity.
-- Logout invalidates the server-side session, clears the security context and cookie, and discards protected UI state. The frontend handles later `401` responses by returning to sign-in.
-- Ownership defaults to the authenticated principal. Admins/managers may change the assignee through the validated `assignee` field; direct `owner`, `id`, and `role` overrides remain rejected. The user directory returns only usernames and roles to authorized leaders. Backend authorization applies independently of frontend controls.
-- Authentication/task responses use Spring Security's default no-cache headers. React renders task text without raw HTML injection. No broad CORS policy is enabled.
-- Native dialog elements provide modal semantics and keyboard focus containment. Forms have labels, limits, loading feedback, cancel actions, and error announcements. Delete requires confirmation.
+- **Password hashing:** BCrypt hashes are stored in the in-memory user directory; plaintext demo passwords are used only as startup fixtures.
+- **Authentication:** Spring Security manages authenticated HTTP sessions. Login rotates the session ID; logout invalidates the session and clears the authentication state.
+- **CSRF protection:** Login, logout, and task mutations require CSRF tokens. The frontend retrieves and submits the token through the API.
+- **Authorization:** Backend checks enforce ownership for regular users and elevated permissions for administrators and managers.
+- **Session cookies:** Cookies are HttpOnly and SameSite=Strict. The `Secure` flag can be enabled for HTTPS deployments with `COOKIE_SECURE=true`.
+- **API responses:** Password hashes and internal exception traces are not exposed through application endpoints.
 
-## Assumptions and limitations
+## Assumptions and Limitations
 
-- Java and Spring Boot follow the assignment's required stack and provide established session/security/validation support.
-- The required in-memory storage intentionally loses data and sessions on restart. It is designed for a single application process, not clustered deployment.
-- Session authentication is a good fit for this same-origin app; token persistence and JWT infrastructure would add unnecessary complexity.
-- Status filtering and summary cards in the UI derive from the authorized server task list. The required server `status` query parameter is also supported and tested. There is no optional `/api/tasks/stats` endpoint.
-- Registration and pagination are not implemented. Only seeded users can sign in. Task lists are unpaginated.
-- Demo credentials, lack of rate limiting/account recovery, and in-memory data make this a local assessment application, not an internet production deployment.
-- UI typography optionally uses Google Fonts; system fonts are used if it is unreachable.
-- Production frontend dependencies audit clean. The full development dependency audit still reports an upstream **picomatch ReDoS advisory** propagated through build/test tools. The latest published picomatch version at verification time is still affected; no safe compatible patch is available. Build/test glob patterns here are fixed repository inputs, not user-supplied strings. Details and mitigation scope are recorded in `docs/VERIFICATION.md`.
-- Browser verification covers the in-app browser at desktop and mobile widths, not every browser/device or a formal accessibility audit.
+- Java and Spring Boot were chosen from the backend technologies permitted by the assignment.
+- Data is stored in memory, so tasks and sessions reset on backend restart. The application is designed for a single process rather than a distributed deployment.
+- Demo accounts are fixed; self-service registration and account recovery are not implemented.
+- Optional pagination and the `/api/tasks/stats` endpoint are not implemented. Dashboard status summaries are derived from the authorized task list.
+- The application is intended for local assessment, not public production deployment. Production use would require additional controls, including removal of demo credentials and login rate limiting.
+- A development dependency advisory involving `picomatch` is documented in [Verification Results](docs/VERIFICATION.md). Production frontend dependencies were reported clean in the recorded audit; see that document for details and scope.
 
-## Git and submission
-
-The project has local commits and no configured publishing destination. The first commit contains the initial implementation as one large change; subsequent refactoring, testing, security/build changes, and documentation are separate commits. This is the actual history, not a reconstructed incremental development history.
-
-Review `git log --oneline` and `git status --short` before submission. To publish later, create an empty repository in your own account, then run:
-
-```sh
-git remote add origin <repository-url>
-git push -u origin main
-```
-
-Nothing has been pushed or published automatically.
