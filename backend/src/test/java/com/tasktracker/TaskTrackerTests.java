@@ -235,6 +235,18 @@ class TaskTrackerTests {
     call("GET", "/api/tasks/" + alice, null, "alice").andExpect(status().isNotFound());
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "{\"title\":123}",
+        "{\"title\":true}",
+        "{\"title\":12.5}",
+        "{\"title\":\"Valid\",\"description\":42}"
+      })
+  void numericStringsAreRejected(String payload) throws Exception {
+    call("POST", "/api/tasks", payload, "alice").andExpect(status().isBadRequest());
+  }
+
   static List<String> invalidCreates() {
     return List.of(
         "{}",
