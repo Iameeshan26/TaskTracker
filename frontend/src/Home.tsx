@@ -1,7 +1,7 @@
-import {useContext} from "react";
-import {Link} from "react-router-dom";
-import {statuses} from "./types";
-import {Auth} from "./auth";
+import { useContext } from "react";
+import { Link } from "react-router-dom";
+import { statuses } from "./types";
+import { Auth } from "./auth";
 import Brand from "./Brand";
 export default function Home() {
   const { user } = useContext(Auth);

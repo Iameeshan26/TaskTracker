@@ -1,4 +1,4 @@
-import {useEffect,useRef,type ReactNode} from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 export default function Modal({
   title,
   onClose,
@@ -12,6 +12,7 @@ export default function Modal({
   useEffect(() => {
     const dialog = ref.current!;
     dialog.showModal();
+    dialog.querySelector<HTMLElement>("input, textarea, select")?.focus();
     return () => dialog.close();
   }, []);
   return (

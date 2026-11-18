@@ -1,7 +1,7 @@
-import {useState,type FormEvent} from "react";
-import {api} from "./api";
-import {statuses,type Task,type Status} from "./types";
-import {message} from "./auth";
+import { useState, type FormEvent } from "react";
+import { api } from "./api";
+import { statuses, type Task, type Status } from "./types";
+import { message } from "./auth";
 import Modal from "./Modal";
 export default function TaskEditor({
   task,

@@ -1,8 +1,8 @@
-import {useState,useEffect,useContext} from "react";
-import {Link,useNavigate} from "react-router-dom";
-import {api} from "./api";
-import {statuses,type Task} from "./types";
-import {Auth,message} from "./auth";
+import { useState, useEffect, useContext } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { api } from "./api";
+import { statuses, type Task } from "./types";
+import { Auth, message } from "./auth";
 import Brand from "./Brand";
 import Modal from "./Modal";
 import TaskEditor from "./TaskEditor";

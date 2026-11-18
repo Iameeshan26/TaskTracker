@@ -1,8 +1,8 @@
-import {useState,useEffect} from "react";
-import {Navigate,Route,Routes} from "react-router-dom";
-import {api,ApiError} from "./api";
-import type {User} from "./types";
-import {Auth,message} from "./auth";
+import { useState, useEffect } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { api, ApiError } from "./api";
+import type { User } from "./types";
+import { Auth, message } from "./auth";
 import Home from "./Home";
 import Login from "./Login";
 import Dashboard from "./Dashboard";
