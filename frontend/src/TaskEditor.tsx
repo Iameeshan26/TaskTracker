@@ -1,7 +1,13 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, useContext, type FormEvent } from "react";
 import { api } from "./api";
-import { statuses, type Task, type Status } from "./types";
-import { message } from "./auth";
+import {
+  statuses,
+  type Task,
+  type Status,
+  type User,
+  canManageTasks,
+} from "./types";
+import { Auth, message } from "./auth";
 import Modal from "./Modal";
 export default function TaskEditor({
   task,
@@ -12,6 +18,37 @@ export default function TaskEditor({
   onClose: () => void;
   onSave: (task: Task) => void;
 }) {
+  const { user } = useContext(Auth);
+  const canAssign = canManageTasks(user);
+  const [users, setUsers] = useState<User[]>([]);
+  const [assignee, setAssignee] = useState(task?.owner || user?.username || "");
+  const [usersLoading, setUsersLoading] = useState(canAssign);
+  const [usersError, setUsersError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  useEffect(() => {
+    if (!canAssign) return;
+    let active = true;
+    setUsersLoading(true);
+    setUsersError("");
+    api<User[]>("/users")
+      .then((list) => {
+        if (active) setUsers(list);
+      })
+      .catch((e) => {
+        if (active) setUsersError(message(e));
+      })
+      .finally(() => {
+        if (active) setUsersLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canAssign, loadAttempt]);
+  const assignmentReady =
+    !canAssign ||
+    (!usersLoading &&
+      !usersError &&
+      users.some((u) => u.username === assignee));
   const [title, setTitle] = useState(task?.title || ""),
     [description, setDescription] = useState(task?.description || ""),
     [status, setStatus] = useState<Status>(task?.status || "todo"),
@@ -19,6 +56,7 @@ export default function TaskEditor({
     [error, setError] = useState("");
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!assignmentReady) return;
     if (title.trim().length < 3) {
       setError("Title must contain at least 3 non-padding characters.");
       return;
@@ -33,6 +71,7 @@ export default function TaskEditor({
             title: title.trim(),
             description,
             ...(task ? { status } : {}),
+            ...(canAssign ? { assignee } : {}),
           }),
         }),
       );
@@ -78,6 +117,55 @@ export default function TaskEditor({
           placeholder="Add a little context…"
         />
         <small className="char-count">{description.length}/500</small>
+        {canAssign && (
+          <>
+            <label htmlFor="task-assignee">Assign to</label>
+            <select
+              id="task-assignee"
+              value={assignee}
+              disabled={usersLoading || busy || !!usersError}
+              required
+              onChange={(e) => setAssignee(e.target.value)}
+              aria-describedby="assignment-help"
+            >
+              {usersLoading ? (
+                <option value={assignee}>Loading users…</option>
+              ) : (
+                <>
+                  <option value="" disabled>
+                    Select a user
+                  </option>
+                  {users.map((account) => (
+                    <option key={account.username} value={account.username}>
+                      {account.username} ·{" "}
+                      {account.role === "ADMIN"
+                        ? "Admin"
+                        : account.role === "MANAGER"
+                          ? "Manager"
+                          : "User"}
+                      {account.username === user?.username ? " (you)" : ""}
+                    </option>
+                  ))}
+                </>
+              )}
+            </select>
+            <p id="assignment-help" className="modal-description">
+              The task will appear in the selected user’s workspace.
+            </p>
+            {usersError && (
+              <div className="error" role="alert">
+                Could not load users: {usersError}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setLoadAttempt((n) => n + 1)}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+          </>
+        )}
         {task ? (
           <>
             <label htmlFor="task-status">Status</label>
@@ -116,7 +204,7 @@ export default function TaskEditor({
           >
             Cancel
           </button>
-          <button disabled={busy}>
+          <button disabled={busy || !assignmentReady}>
             {busy ? "Saving…" : task ? "Save changes" : "Create task"}
           </button>
         </div>

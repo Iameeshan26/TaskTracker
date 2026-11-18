@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import { Link } from "react-router-dom";
-import { statuses } from "./types";
+import { statuses, workspacePath } from "./types";
 import { Auth } from "./auth";
 import Brand from "./Brand";
 export default function Home() {
@@ -9,7 +9,10 @@ export default function Home() {
     <div className="home">
       <header className="public-nav">
         <Brand />
-        <Link className="button secondary" to={user ? "/dashboard" : "/login"}>
+        <Link
+          className="button secondary"
+          to={user ? workspacePath(user) : "/login"}
+        >
           {user ? "Open workspace" : "Sign in"} <span>↗</span>
         </Link>
       </header>
@@ -25,7 +28,7 @@ export default function Home() {
           <br />
           Organize your work, find your focus, and move things forward.
         </p>
-        <Link className="button" to={user ? "/dashboard" : "/login"}>
+        <Link className="button" to={user ? workspacePath(user) : "/login"}>
           Enter your workspace <span>↗</span>
         </Link>
         <div className="hero-note">
@@ -69,8 +72,9 @@ export default function Home() {
             <p>
               <strong>USER</strong> · A private workspace for your own tasks.
               <br />
-              <strong>ADMIN</strong> · A shared overview, organized by task
-              owner.
+              <strong>MANAGER</strong> · Assign tasks and coordinate the team.
+              <br />
+              <strong>ADMIN</strong> · Manage and assign every team task.
             </p>
           </div>
           <div>

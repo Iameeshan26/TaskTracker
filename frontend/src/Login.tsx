@@ -1,7 +1,7 @@
 import { useState, useContext, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "./api";
-import type { User } from "./types";
+import { type User, workspacePath } from "./types";
 import { Auth, message } from "./auth";
 import Brand from "./Brand";
 export default function Login({
@@ -30,7 +30,7 @@ export default function Login({
       });
       setUser(user);
       onLogin();
-      navigate(user.role === "ADMIN" ? "/admin" : "/dashboard", {
+      navigate(workspacePath(user), {
         replace: true,
       });
     } catch (e) {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "./api";
-import { statuses, type Task } from "./types";
+import { statuses, type Task, canManageTasks, workspacePath } from "./types";
 import { Auth, message } from "./auth";
 import Brand from "./Brand";
 import Modal from "./Modal";
@@ -17,7 +17,13 @@ export default function Dashboard() {
     [editing, setEditing] = useState<Task | null | undefined>(undefined),
     [deleting, setDeleting] = useState<Task | null>(null),
     [busy, setBusy] = useState(false);
-  const admin = user?.role === "ADMIN";
+  const team = canManageTasks(user);
+  const roleLabel =
+    user?.role === "ADMIN"
+      ? "Administrator"
+      : user?.role === "MANAGER"
+        ? "Manager"
+        : "Personal workspace";
   async function refresh() {
     setLoading(true);
     setError("");
@@ -61,17 +67,17 @@ export default function Dashboard() {
     }
   }
   const visible = tasks.filter((t) => !filter || t.status === filter);
-  const groups = admin
-    ? [...new Set(visible.map((t) => t.owner))]
+  const groups = team
+    ? [...new Set(visible.map((t) => t.owner))].sort()
     : [user!.username];
   return (
     <div className="workspace">
       <aside className="sidebar">
         <Brand />
         <div className="workspace-label">WORKSPACE</div>
-        <Link className="nav-active" to={admin ? "/admin" : "/dashboard"}>
+        <Link className="nav-active" to={workspacePath(user!)}>
           <span>▦</span>
-          {admin ? "Team tasks" : "My tasks"}
+          {team ? "Team tasks" : "My tasks"}
           <span className="nav-count">{tasks.length}</span>
         </Link>
         <div className="sidebar-bottom">
@@ -88,7 +94,7 @@ export default function Dashboard() {
             <span className="avatar">{user!.username[0].toUpperCase()}</span>
             <div>
               <strong>{user!.username}</strong>
-              <small>{admin ? "Administrator" : "Personal workspace"}</small>
+              <small>{roleLabel}</small>
             </div>
           </div>
           <button className="logout" onClick={logout} disabled={busy}>
@@ -100,19 +106,19 @@ export default function Dashboard() {
         <header className="workspace-top">
           <span>
             Workspace <span className="slash">/</span>{" "}
-            <strong>{admin ? "Team overview" : "My tasks"}</strong>
+            <strong>{team ? "Team overview" : "My tasks"}</strong>
           </span>
           <span className="private-label">
             <span className="tiny-dot" />
-            {admin ? "Admin workspace" : "Your private workspace"}
+            {team ? `${roleLabel} workspace` : "Your private workspace"}
           </span>
         </header>
         <section className="dashboard-heading">
           <div>
             <span className="eyebrow">LET’S MAKE SOME PROGRESS</span>
-            <h1>{admin ? "The bigger picture." : "Your work, in focus."}</h1>
+            <h1>{team ? "The bigger picture." : "Your work, in focus."}</h1>
             <p>
-              {admin
+              {team
                 ? "A little clarity across the team. Every task, organized by owner."
                 : `Welcome back, ${user!.username}. A clear mind starts with a clear plan.`}
             </p>
@@ -150,7 +156,7 @@ export default function Dashboard() {
         <section className="task-section">
           <div className="list-toolbar">
             <h2>
-              {admin ? "All team tasks" : "Your tasks"}{" "}
+              {team ? "All team tasks" : "Your tasks"}{" "}
               <span>{visible.length}</span>
             </h2>
             <div className="filters" aria-label="Filter tasks by status">
@@ -211,9 +217,9 @@ export default function Dashboard() {
           ) : (
             groups.map((owner) => (
               <section key={owner} className="owner-group">
-                {admin && (
-                  <h3>
-                    <span className="avatar small">
+                {team && (
+                  <h3 aria-label={`Tasks assigned to ${owner}`}>
+                    <span className="avatar small" aria-hidden="true">
                       {owner[0].toUpperCase()}
                     </span>
                     {owner}
@@ -276,7 +282,7 @@ export default function Dashboard() {
         <div className="dashboard-foot">
           A little progress, every day.{" "}
           <span>
-            Task Tracker / {admin ? "Team workspace" : "Personal workspace"}
+            Task Tracker / {team ? "Team workspace" : "Personal workspace"}
           </span>
         </div>
       </main>
@@ -286,11 +292,10 @@ export default function Dashboard() {
           onClose={() => setEditing(undefined)}
           onSave={(t) => {
             setTasks((old) =>
-              editing
+              (editing
                 ? old.map((x) => (x.id === t.id ? t : x))
-                : [...old, t].sort(
-                    (a, b) => a.owner.localeCompare(b.owner) || a.id - b.id,
-                  ),
+                : [...old, t]
+              ).sort((a, b) => a.owner.localeCompare(b.owner) || a.id - b.id),
             );
             setEditing(undefined);
             setNotice(

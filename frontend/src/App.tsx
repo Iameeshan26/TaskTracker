@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { api, ApiError } from "./api";
-import type { User } from "./types";
+import { type User, workspacePath, canManageTasks } from "./types";
 import { Auth, message } from "./auth";
 import Home from "./Home";
 import Login from "./Login";
@@ -51,10 +51,7 @@ export default function App() {
           path="/login"
           element={
             user ? (
-              <Navigate
-                to={user.role === "ADMIN" ? "/admin" : "/dashboard"}
-                replace
-              />
+              <Navigate to={workspacePath(user)} replace />
             ) : (
               <Login expired={expired} onLogin={() => setExpired(false)} />
             )
@@ -75,6 +72,20 @@ export default function App() {
           element={
             user ? (
               user.role === "ADMIN" ? (
+                <Dashboard key={user.username} />
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/manager"
+          element={
+            user ? (
+              canManageTasks(user) ? (
                 <Dashboard key={user.username} />
               ) : (
                 <Navigate to="/dashboard" replace />
