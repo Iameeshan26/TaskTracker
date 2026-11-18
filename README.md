@@ -1,6 +1,6 @@
 # Task Tracker
 
-A complete local task-management application with a public homepage, secure sign-in, private user workspaces, and an administrator overview grouped by task owner. Users can create, edit, filter, and delete tasks; administrators can manage every user's tasks. All data lives in memory and resets when the backend restarts.
+A complete local task-management application with a public homepage, secure sign-in, private user workspaces, and administrator and manager overviews grouped by task assignee. Users can create, edit, filter, and delete tasks; administrators and managers can manage and assign every user's tasks. All data lives in memory and resets when the backend restarts.
 
 ## Quick start
 
@@ -36,8 +36,13 @@ These accounts are public **local demonstration fixtures only**, not real creden
 | `alice` | `Alice-demo-2026!` | USER |
 | `bob` | `Bob-demo-2026!` | USER |
 | `admin` | `Admin-demo-2026!` | ADMIN |
+| `manager` | `Manager-demo-2026!` | MANAGER |
 
-Startup hashes the demo passwords with BCrypt before storing users in memory. Alice and Bob each receive two example tasks. Newly created tasks belong to their creator, including tasks created by an administrator.
+Startup hashes the demo passwords with BCrypt before storing users in memory. Alice and Bob each receive two example tasks. Newly created tasks belong to their creator by default. Admins and managers can select an existing account in **Assign to** when creating or editing a task. The dropdown includes username and role, defaults to the current user for creation, and preselects the current assignee for editing. Reassignment moves the task into the selected user’s workspace.
+
+Managers use `/manager` and can view, edit, delete, and assign all team tasks, matching admins for task-management permissions. Regular users retain personal CRUD access but cannot view the user directory or assign tasks to others. Role changes and account creation are not exposed by this update.
+
+**Already running the previous version?** Restart the backend to load the manager account and assignment endpoints, then refresh the frontend. As before, a backend restart resets in-memory tasks and sessions.
 
 ## Stack
 
@@ -81,7 +86,7 @@ python3 scripts/verify_http.py
 
 Python 3's standard library is sufficient. The script uses real cookies and CSRF headers, creates disposable tasks, verifies both user and admin workflows, and removes its tasks. An alternate base URL can be passed as its first argument.
 
-The backend package is `backend/target/task-tracker-1.0.0.jar`, runnable with `java -jar backend/target/task-tracker-1.0.0.jar`. Frontend build output is `frontend/dist`. A production deployment needs a same-origin static server/reverse proxy with SPA route fallback and `/api` forwarded to the backend. The Vite development server is the documented local execution path, not a production server.
+The backend package is `backend/target/task-tracker-1.0.0.jar`, runnable with `java -jar backend/target/task-tracker-1.0.0.jar`. Frontend build output is `frontend/dist`. A production deployment needs a same-origin static server/reverse proxy with SPA route fallback and `/api` forwarded to the backend. The Vite development server is the documented local execution path, not a production server. For isolated verification, set `TASK_TRACKER_API_URL=http://127.0.0.1:8081` when launching Vite and pass `--server.port=8081` to the backend; the default remains port 8080.
 
 See [verification results](docs/VERIFICATION.md) for actual executed checks and browser coverage.
 
@@ -94,15 +99,16 @@ All request/response bodies are JSON except successful `204` responses. Authenti
 | GET | `/api/csrf` | Public: CSRF token and header name |
 | POST | `/api/login` | Public with CSRF: authenticate; return username and role |
 | GET | `/api/me` | Current authenticated username and role |
+| GET | `/api/users` | Admin/manager only: sorted username and role summaries, never hashes |
 | POST | `/api/logout` | Invalidate session, clear cookie/context; `204` |
 | GET | `/api/tasks` | Authorized tasks, ordered by owner then numeric ID |
 | GET | `/api/tasks?status=todo` | Authorized tasks matching a valid status |
 | GET | `/api/tasks/{id}` | One authorized task; added for explicit by-ID access |
-| POST | `/api/tasks` | Create an owned `todo` task; `201` |
-| PATCH | `/api/tasks/{id}` | Update supplied title, description, or status; `200` |
+| POST | `/api/tasks` | Create a `todo` task; leaders may specify `assignee`; `201` |
+| PATCH | `/api/tasks/{id}` | Update title, description, status, or authorized assignee; `200` |
 | DELETE | `/api/tasks/{id}` | Delete an authorized task; `204` |
 
-Statuses are exactly `todo`, `in_progress`, and `done`. Regular users can see and mutate only their own tasks. Administrators can see and mutate all tasks. Missing and inaccessible task IDs both return `404`.
+Statuses are exactly `todo`, `in_progress`, and `done`. Regular users can see and mutate only their own tasks. Administrators and managers can see, mutate, and assign all tasks. Missing and inaccessible task IDs both return `404`.
 
 ### Session and CSRF example
 
@@ -139,13 +145,21 @@ Created task (ID varies):
 {"id":5,"owner":"alice","title":"Prepare the review","description":"Collect feedback","status":"todo"}
 ```
 
-PATCH accepts any nonempty subset of `title`, `description`, and `status`:
+PATCH accepts any nonempty subset of `title`, `description`, and `status`; admins and managers may also supply `assignee`:
 
 ```json
 {"title":"Review the final draft","description":null,"status":"in_progress"}
 ```
 
-Omitted fields remain unchanged. `null` or `""` clears the description. Title is trimmed, must contain 3–100 characters, and cannot be blank or null. Description is optional and limited to 500 characters. Status cannot be null or unknown. Validation applies equally to administrators. Unknown fields are rejected, including `owner`, `id`, and `role`; creation rejects **any** client-supplied `status` (even `todo`). This rejects spoofed ownership instead of silently ignoring it.
+Omitted fields remain unchanged. `null` or `""` clears the description. Title is trimmed, must contain 3–100 characters, and cannot be blank or null. Description is optional and limited to 500 characters. Status cannot be null or unknown. Validation applies equally to administrators and managers. Unknown fields are rejected, including `owner`, `id`, and `role`; creation rejects **any** client-supplied `status` (even `todo`). The response’s `owner` is the current assignee. Assignments must use the validated `assignee` field, never a direct `owner` override.
+
+Example admin/manager create payload:
+
+```json
+{"title":"Prepare release checklist","description":"Confirm release steps","assignee":"alice"}
+```
+
+Reassign an existing task with `{"assignee":"bob"}`. Omit `assignee` to preserve the current owner on PATCH or use the signed-in user on creation; a null creation assignee also uses the creator. Blank/unknown assignees and null/non-string PATCH assignees return 400. Valid assignment attempts by regular users return 403. All enabled accounts, including managers and admins, are eligible assignees. Reassignment does not change the task’s ID, status, title, or description unless those fields are supplied too. The previous regular-user assignee loses access immediately on the server.
 
 Errors use an `error` code and a human-readable `message`:
 
@@ -157,7 +171,7 @@ Errors use an `error` code and a human-readable `message`:
 | --- | --- |
 | 400 | Invalid JSON, fields, filter, or malformed numeric ID |
 | 401 | Missing/expired authentication, invalid credentials, or unauthenticated mutation without CSRF |
-| 403 | Authenticated request has a missing/invalid CSRF token |
+| 403 | Missing/invalid CSRF token, or insufficient directory/assignment permission |
 | 404 | Task does not exist or is not accessible to the current user |
 
 Login uses the same error for unknown usernames and incorrect passwords. Password hashes and internal exception traces are never returned by the application endpoints.
@@ -172,8 +186,8 @@ backend/
     controller/                Authentication and task HTTP endpoints
     dto/                       Login/create request validation
     model/                     Immutable task record
-    repository/                Concurrent in-memory task storage and demo fixtures
-    service/                   Ownership-aware operations and PATCH validation
+    repository/                Concurrent task storage and immutable account directory
+    service/                   Ownership-aware operations, leader permissions, assignment validation
     exception/                 Consistent API validation/not-found errors
   src/main/resources/          Session/cookie/server settings
   src/test/                    MockMvc security and contract tests
@@ -183,15 +197,16 @@ frontend/
   src/api.ts                   Fetch, CSRF token handling, session expiration
   src/Home.tsx, Login.tsx       Public screens
   src/Dashboard.tsx            User/admin list, filtering, feedback, deletion
-  src/TaskEditor.tsx            Create/edit forms
+  src/TaskEditor.tsx            Create/edit forms with authorized user dropdown
   src/Modal.tsx, Brand.tsx      Shared accessible UI
   src/styles.css               Responsive layout and status styles
   src/App.test.tsx              Essential frontend workflow tests
+  src/Assignment.test.tsx       Dropdown, reassignment, permissions and retry tests
 scripts/verify_http.py          Reproducible live HTTP checks
 docs/VERIFICATION.md            Verification evidence and known limits
 ```
 
-Tasks are immutable records stored in a `ConcurrentHashMap`. An `AtomicLong` allocates IDs. Updates/deletes use atomic `compute` operations; authorization is repeated inside the mutation to avoid acting on an unchecked record. Repository snapshots do not expose mutable internal collections. User records are managed by Spring Security's in-memory user manager. Controllers delegate task business rules to the service.
+Tasks are immutable records stored in a `ConcurrentHashMap`. An `AtomicLong` allocates IDs. Updates/deletes use atomic `compute` operations; authorization is repeated inside the mutation to avoid acting on an unchecked record. Repository snapshots do not expose mutable internal collections. User records are held in an immutable in-memory directory shared by authentication and assignment validation. Authentication receives defensive copies so credential erasure cannot clear stored BCrypt hashes. Controllers delegate task business rules to the service.
 
 ## Security design
 
@@ -200,7 +215,7 @@ Tasks are immutable records stored in a `ConcurrentHashMap`. An `AtomicLong` all
 - Spring Security's session-backed CSRF protection remains enabled for login, logout, and every task mutation. `/api/csrf` exposes a masked token; the browser sends it in `X-CSRF-TOKEN`. Login clears the previous token; the client fetches another before its next mutation.
 - Cookies are HttpOnly and SameSite=Strict. `Secure` defaults to false solely for loopback HTTP development; set `COOKIE_SECURE=true` behind production HTTPS. Sessions expire after 30 minutes of inactivity.
 - Logout invalidates the server-side session, clears the security context and cookie, and discards protected UI state. The frontend handles later `401` responses by returning to sign-in.
-- Ownership is assigned from the authenticated principal. Role and owner cannot be changed in task payloads. Backend authorization applies independently of frontend controls.
+- Ownership defaults to the authenticated principal. Admins/managers may change the assignee through the validated `assignee` field; direct `owner`, `id`, and `role` overrides remain rejected. The user directory returns only usernames and roles to authorized leaders. Backend authorization applies independently of frontend controls.
 - Authentication/task responses use Spring Security's default no-cache headers. React renders task text without raw HTML injection. No broad CORS policy is enabled.
 - Native dialog elements provide modal semantics and keyboard focus containment. Forms have labels, limits, loading feedback, cancel actions, and error announcements. Delete requires confirmation.
 
