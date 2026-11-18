@@ -1,28 +1,91 @@
-import {useState,useEffect,createContext,useContext,useRef,type FormEvent} from 'react';
-import {Link,Navigate,Route,Routes,useNavigate} from 'react-router-dom';
-import {api,ApiError} from './api';
-import {statuses,type User,type Task,type Status} from './types';
-const Auth=createContext<{user:User|null;setUser:(user:User|null)=>void}>({user:null,setUser:()=>{}});
-const message=(e:unknown)=>e instanceof Error?e.message:'Something went wrong. Please try again.';
-function Brand(){return <Link className="brand" to="/" aria-label="Task Tracker home"><span className="brand-icon">✓</span>task tracker<span className="brand-period">.</span></Link>}
-export default function App(){
- const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[expired,setExpired]=useState(false);
- const restore=()=>{setLoading(true);setError('');api<User>('/me').then(setUser).catch(e=>{if(!(e instanceof ApiError&&e.status===401))setError(message(e));}).finally(()=>setLoading(false));};
- useEffect(()=>{restore();const expire=()=>{setUser(null);setExpired(true);};window.addEventListener('session-expired',expire);return()=>window.removeEventListener('session-expired',expire);},[]);
- if(loading)return <div className="loading" role="status">Opening your workspace…</div>;
- if(error)return <div className="loading"><p role="alert">{error}</p><button onClick={restore}>Try again</button></div>;
- return <Auth.Provider value={{user,setUser}}><Routes><Route path="/" element={<Home/>}/><Route path="/login" element={user?<Navigate to={user.role==='ADMIN'?'/admin':'/dashboard'} replace/>:<Login expired={expired} onLogin={()=>setExpired(false)}/>}/><Route path="/dashboard" element={user?<Dashboard key={user.username}/>:<Navigate to="/login" replace/>}/><Route path="/admin" element={user?(user.role==='ADMIN'?<Dashboard key={user.username}/>:<Navigate to="/dashboard" replace/>):<Navigate to="/login" replace/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></Auth.Provider>;
+import {useState,useEffect} from "react";
+import {Navigate,Route,Routes} from "react-router-dom";
+import {api,ApiError} from "./api";
+import type {User} from "./types";
+import {Auth,message} from "./auth";
+import Home from "./Home";
+import Login from "./Login";
+import Dashboard from "./Dashboard";
+export default function App() {
+  const [user, setUser] = useState<User | null>(null),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState(""),
+    [expired, setExpired] = useState(false);
+  const restore = () => {
+    setLoading(true);
+    setError("");
+    api<User>("/me")
+      .then(setUser)
+      .catch((e) => {
+        if (!(e instanceof ApiError && e.status === 401)) setError(message(e));
+      })
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    restore();
+    const expire = () => {
+      setUser(null);
+      setExpired(true);
+    };
+    window.addEventListener("session-expired", expire);
+    return () => window.removeEventListener("session-expired", expire);
+  }, []);
+  if (loading)
+    return (
+      <div className="loading" role="status">
+        Opening your workspace…
+      </div>
+    );
+  if (error)
+    return (
+      <div className="loading">
+        <p role="alert">{error}</p>
+        <button onClick={restore}>Try again</button>
+      </div>
+    );
+  return (
+    <Auth.Provider value={{ user, setUser }}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route
+          path="/login"
+          element={
+            user ? (
+              <Navigate
+                to={user.role === "ADMIN" ? "/admin" : "/dashboard"}
+                replace
+              />
+            ) : (
+              <Login expired={expired} onLogin={() => setExpired(false)} />
+            )
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            user ? (
+              <Dashboard key={user.username} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            user ? (
+              user.role === "ADMIN" ? (
+                <Dashboard key={user.username} />
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Auth.Provider>
+  );
 }
-function Home(){const {user}=useContext(Auth);return <div className="home"><header className="public-nav"><Brand/><Link className="button secondary" to={user?'/dashboard':'/login'}>{user?'Open workspace':'Sign in'} <span>↗</span></Link></header><main className="hero"><span className="eyebrow">LESS BUSYWORK. MORE FORWARD.</span><h1>Make room<br/>for <em>progress.</em></h1><p>A clear place for everything you need to do.<br/>Organize your work, find your focus, and move things forward.</p><Link className="button" to={user?'/dashboard':'/login'}>Enter your workspace <span>↗</span></Link><div className="hero-note"><span className="tiny-dot"/> A little structure. A lot of possibility.</div><section className="flow-preview" aria-label="Available task statuses">{Object.entries(statuses).map(([key,label],i)=><div key={key}><span className={'status '+key}><i/>{label}</span><div className="preview-lines"><b>{['Start with an idea','Find your momentum','Celebrate the small wins'][i]}</b><p>{['Make space for what matters.','One focused step at a time.','Look how far you’ve come.'][i]}</p></div></div>)}</section><section className="home-details"><div><span className="eyebrow">A SPACE FOR EVERY ROLE</span><h2>Your work. The bigger picture.</h2><p><strong>USER</strong> · A private workspace for your own tasks.<br/><strong>ADMIN</strong> · A shared overview, organized by task owner.</p></div><div><span className="eyebrow">BUILT WITH CARE</span><h2>Simple by design.</h2><p>Java 21 · Spring Boot · Spring Security<br/>React · TypeScript · Vite · In-memory storage</p></div></section></main><footer>Task Tracker <span>Thoughtful tools for everyday progress.</span></footer></div>}
-function Login({expired,onLogin}:{expired:boolean;onLogin:()=>void}){const {setUser}=useContext(Auth);const navigate=useNavigate();const [error,setError]=useState(''),[busy,setBusy]=useState(false);async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const data=new FormData(e.currentTarget);setBusy(true);setError('');try{const user=await api<User>('/login',{method:'POST',body:JSON.stringify({username:data.get('username'),password:data.get('password')})});setUser(user);onLogin();navigate(user.role==='ADMIN'?'/admin':'/dashboard',{replace:true});}catch(e){setError(message(e));}finally{setBusy(false);}}return <div className="login-page"><header className="public-nav"><Brand/><Link to="/">← Back to home</Link></header><main className="login-layout"><section className="login-intro"><span className="eyebrow">YOUR NEXT CHAPTER STARTS HERE</span><h1>Good things<br/>get <em>done.</em></h1><p>A fresh perspective on your everyday tasks.<br/>Sign in and pick up where you left off.</p><div className="login-art" aria-hidden="true"><span>✓</span><span>✓</span><span>↗</span></div></section><section className="login-card"><span className="eyebrow">WELCOME BACK</span><h2>Sign in to your workspace</h2><p>Bring a little clarity to your day.</p>{expired&&<p role="status" className="notice">Your session has expired. Please sign in again.</p>}<form onSubmit={submit}><label htmlFor="username">Username</label><input id="username" name="username" autoComplete="username" required maxLength={100} autoFocus placeholder="Enter your username"/><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" required maxLength={200} placeholder="Enter your password"/>{error&&<p className="error" role="alert">{error}</p>}<button className="wide" disabled={busy}>{busy?'Signing in…':'Sign in'} <span>↗</span></button></form><p className="demo-hint">Local demo accounts are listed in the project README.</p></section></main></div>}
-function Dashboard(){
- const {user,setUser}=useContext(Auth);const navigate=useNavigate();const [tasks,setTasks]=useState<Task[]>([]),[filter,setFilter]=useState(''),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[editing,setEditing]=useState<Task|null|undefined>(undefined),[deleting,setDeleting]=useState<Task|null>(null),[busy,setBusy]=useState(false);const admin=user?.role==='ADMIN';
- async function refresh(){setLoading(true);setError('');try{setTasks(await api<Task[]>('/tasks'));}catch(e){setError(message(e));}finally{setLoading(false);}}
- useEffect(()=>{void refresh();},[]);
- async function logout(){setBusy(true);try{await api('/logout',{method:'POST'});setTasks([]);setUser(null);navigate('/login',{replace:true});}catch(e){setError(message(e));}finally{setBusy(false);}}
- async function remove(){if(!deleting)return;setBusy(true);try{await api('/tasks/'+deleting.id,{method:'DELETE'});setTasks(t=>t.filter(x=>x.id!==deleting.id));setDeleting(null);setNotice('Task deleted.');}catch(e){setError(message(e));setDeleting(null);}finally{setBusy(false);}}
- const visible=tasks.filter(t=>!filter||t.status===filter);const groups=admin?[...new Set(visible.map(t=>t.owner))]:[user!.username];
- return <div className="workspace"><aside className="sidebar"><Brand/><div className="workspace-label">WORKSPACE</div><Link className="nav-active" to={admin?'/admin':'/dashboard'}><span>▦</span>{admin?'Team tasks':'My tasks'}<span className="nav-count">{tasks.length}</span></Link><div className="sidebar-bottom"><div className="sidebar-note"><span>One thing at a time.</span><p>Small steps make<br/>meaningful progress.</p><div>↗</div></div><div className="profile"><span className="avatar">{user!.username[0].toUpperCase()}</span><div><strong>{user!.username}</strong><small>{admin?'Administrator':'Personal workspace'}</small></div></div><button className="logout" onClick={logout} disabled={busy}>Sign out <span>↗</span></button></div></aside><main className="dashboard"><header className="workspace-top"><span>Workspace <span className="slash">/</span> <strong>{admin?'Team overview':'My tasks'}</strong></span><span className="private-label"><span className="tiny-dot"/>{admin?'Admin workspace':'Your private workspace'}</span></header><section className="dashboard-heading"><div><span className="eyebrow">LET’S MAKE SOME PROGRESS</span><h1>{admin?'The bigger picture.':'Your work, in focus.'}</h1><p>{admin?'A little clarity across the team. Every task, organized by owner.':`Welcome back, ${user!.username}. A clear mind starts with a clear plan.`}</p></div><button onClick={()=>setEditing(null)}>＋ Create task</button></section><section className="stats" aria-label="Task summary"><div><span>Total tasks</span><strong>{tasks.length.toString().padStart(2,'0')}</strong><small>Everything in your workspace</small></div>{Object.entries(statuses).map(([key,label])=><div key={key}><span><i className={'dot '+key}/>{label}</span><strong>{tasks.filter(t=>t.status===key).length.toString().padStart(2,'0')}</strong><small>{key==='todo'?'Ready when you are':key==='in_progress'?'Moving things forward':'A little win worth celebrating'}</small></div>)}</section><section className="task-section"><div className="list-toolbar"><h2>{admin?'All team tasks':'Your tasks'} <span>{visible.length}</span></h2><div className="filters" aria-label="Filter tasks by status">{[['','All tasks'],...Object.entries(statuses)].map(([key,label])=><button key={key} aria-pressed={filter===key} className={filter===key?'selected':''} onClick={()=>setFilter(key)}>{label}</button>)}</div></div>{notice&&<div className="notice" role="status">✓ {notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}>×</button></div>}{error&&<div className="error" role="alert">{error} <button className="text-button" onClick={refresh}>Try again</button></div>}{loading?<div className="empty" role="status">Gathering your tasks…</div>:!visible.length?<div className="empty"><span className="empty-icon">✓</span><h3>{filter?'Nothing here just yet.':'A little space for your next idea.'}</h3><p>{filter?'Try another status or create something new.':'Add your first task and take it one step at a time.'}</p><button className="secondary" onClick={()=>setEditing(null)}>＋ Create task</button></div>:groups.map(owner=><section key={owner} className="owner-group">{admin&&<h3><span className="avatar small">{owner[0].toUpperCase()}</span>{owner}<small>{visible.filter(t=>t.owner===owner).length} tasks</small></h3>}<div className="task-table"><div className="table-head"><span>TASK</span><span>STATUS</span><span>ACTIONS</span></div>{visible.filter(t=>t.owner===owner).map(task=><article className="task-row" key={task.id}><div className="task-main"><span className={'task-mark '+task.status}>{task.status==='done'?'✓':task.status==='in_progress'?'◔':'○'}</span><div><h3>{task.title}</h3><p>{task.description||'No description added.'}</p></div></div><span className={'status '+task.status}><i/>{statuses[task.status]}</span><div className="actions"><button aria-label={'Edit '+task.title} title="Edit task" onClick={()=>setEditing(task)}>Edit</button><button className="delete-action" aria-label={'Delete '+task.title} title="Delete task" onClick={()=>setDeleting(task)}>Delete</button></div></article>)}</div></section>)}</section><div className="dashboard-foot">A little progress, every day. <span>Task Tracker / {admin?'Team workspace':'Personal workspace'}</span></div></main>{editing!==undefined&&<TaskEditor task={editing} onClose={()=>setEditing(undefined)} onSave={t=>{setTasks(old=>editing?old.map(x=>x.id===t.id?t:x):[...old,t].sort((a,b)=>a.owner.localeCompare(b.owner)||a.id-b.id));setEditing(undefined);setNotice(editing?'Task updated.':'Task created. Ready when you are.');}}/>}{deleting&&<Modal title="Delete this task?" onClose={()=>!busy&&setDeleting(null)}><p className="modal-description">“{deleting.title}” will be permanently removed. This cannot be undone.</p><div className="form-actions"><button className="secondary" disabled={busy} onClick={()=>setDeleting(null)}>Keep task</button><button className="danger" disabled={busy} onClick={remove}>{busy?'Deleting…':'Delete task'}</button></div></Modal>}</div>;
-}
-function Modal({title,onClose,children}:{title:string;onClose:()=>void;children:React.ReactNode}){const ref=useRef<HTMLDialogElement>(null);useEffect(()=>{const dialog=ref.current!;dialog.showModal();return()=>dialog.close();},[]);return <dialog ref={ref} className="modal" aria-labelledby="modal-title" onCancel={e=>{e.preventDefault();onClose();}}><div className="modal-heading"><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}>×</button></div>{children}</dialog>}
-export function TaskEditor({task,onClose,onSave}:{task:Task|null;onClose:()=>void;onSave:(task:Task)=>void}){const [title,setTitle]=useState(task?.title||''),[description,setDescription]=useState(task?.description||''),[status,setStatus]=useState<Status>(task?.status||'todo'),[busy,setBusy]=useState(false),[error,setError]=useState('');async function submit(e:FormEvent){e.preventDefault();if(title.trim().length<3){setError('Title must contain at least 3 non-padding characters.');return;}setBusy(true);setError('');try{onSave(await api<Task>(task?'/tasks/'+task.id:'/tasks',{method:task?'PATCH':'POST',body:JSON.stringify({title:title.trim(),description,...(task?{status}:{})})}));}catch(e){setError(message(e));}finally{setBusy(false);}}return <Modal title={task?'A little refinement.':'Make space for a new task.'} onClose={()=>!busy&&onClose()}><p className="modal-description">{task?'Keep the details clear and the progress moving.':'Every bit of progress starts with a first step.'}</p><form onSubmit={submit}><label htmlFor="task-title">Title <span className="required">*</span></label><input id="task-title" autoFocus required minLength={3} maxLength={100} value={title} onChange={e=>setTitle(e.target.value)} placeholder="What would you like to work on?"/><label htmlFor="task-description">Description <span className="optional">Optional</span></label><textarea id="task-description" rows={4} maxLength={500} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Add a little context…"/><small className="char-count">{description.length}/500</small>{task?<><label htmlFor="task-status">Status</label><select id="task-status" value={status} onChange={e=>setStatus(e.target.value as Status)}>{Object.entries(statuses).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></>:<p className="creation-note"><span className="status todo"><i/>To do</span> New tasks start here. The rest is up to you.</p>}{error&&<p className="error" role="alert">{error}</p>}<div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={onClose}>Cancel</button><button disabled={busy}>{busy?'Saving…':task?'Save changes':'Create task'}</button></div></form></Modal>}
