@@ -45,7 +45,12 @@ class TaskTrackerTests {
           default -> get(path);
         };
     if (username != null)
-      builder.with(user(username).roles(username.equals("admin") ? "ADMIN" : "USER"));
+      builder.with(
+          user(username)
+              .roles(
+                  username.equals("admin")
+                      ? "ADMIN"
+                      : username.equals("manager") ? "MANAGER" : "USER"));
     if (!method.equals("GET")) builder.with(csrf());
     if (body != null) builder.contentType("application/json").content(body);
     return mvc.perform(builder);
@@ -71,7 +76,8 @@ class TaskTrackerTests {
   @CsvSource({
     "alice,Alice-demo-2026!,USER",
     "admin,Admin-demo-2026!,ADMIN",
-    "bob,Bob-demo-2026!,USER"
+    "bob,Bob-demo-2026!,USER",
+    "manager,Manager-demo-2026!,MANAGER"
   })
   void validLogin(String name, String password, String role) throws Exception {
     var session = login(name, password);
@@ -349,7 +355,7 @@ class TaskTrackerTests {
 
   @Test
   void hashesOnly() {
-    for (String name : List.of("alice", "bob", "admin")) {
+    for (String name : List.of("alice", "bob", "admin", "manager")) {
       String hash = users.loadUserByUsername(name).getPassword();
       assertTrue(hash.startsWith("$2a$"));
       assertTrue(
@@ -392,5 +398,128 @@ class TaskTrackerTests {
     var s = login("alice", "Alice-demo-2026!");
     mvc.perform(post("/api/logout").session(s)).andExpect(status().isForbidden());
     mvc.perform(get("/api/me").session(s)).andExpect(status().isOk());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"admin", "manager"})
+  void directoryContainsOnlySafeAccountSummaries(String actor) throws Exception {
+    var response = call("GET", "/api/users", null, actor).andExpect(status().isOk()).andReturn();
+    var body = json.readTree(response.getResponse().getContentAsString());
+    assertEquals(
+        List.of("admin", "alice", "bob", "manager"),
+        json.convertValue(body.findValues("username"), List.class));
+    assertEquals("MANAGER", body.get(3).get("role").asText());
+    body.forEach(
+        account -> {
+          assertEquals(2, account.size());
+          assertFalse(account.has("password"));
+        });
+  }
+
+  @Test
+  void directoryIsRestricted() throws Exception {
+    call("GET", "/api/users", null, null).andExpect(status().isUnauthorized());
+    call("GET", "/api/users", null, "alice").andExpect(status().isForbidden());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"admin", "manager"})
+  void leadersCreateTasksForUsers(String actor) throws Exception {
+    var response =
+        call("POST", "/api/tasks", "{\"title\":\"Assigned task\",\"assignee\":\"alice\"}", actor)
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("owner").value("alice"))
+            .andExpect(jsonPath("status").value("todo"))
+            .andReturn();
+    long id = json.readTree(response.getResponse().getContentAsString()).get("id").asLong();
+    call("GET", "/api/tasks/" + id, null, "alice").andExpect(status().isOk());
+    call("GET", "/api/tasks/" + id, null, "bob").andExpect(status().isNotFound());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"admin", "manager"})
+  void reassignmentMovesAccessAndPreservesOtherFields(String actor) throws Exception {
+    call("PATCH", "/api/tasks/" + alice, "{\"assignee\":\"bob\"}", actor)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("owner").value("bob"))
+        .andExpect(jsonPath("title").value("Alice fixture"))
+        .andExpect(jsonPath("description").value("Original description"))
+        .andExpect(jsonPath("status").value("todo"));
+    call("GET", "/api/tasks/" + alice, null, "alice").andExpect(status().isNotFound());
+    call("PATCH", "/api/tasks/" + alice, "{\"status\":\"done\"}", "alice")
+        .andExpect(status().isNotFound());
+    call("GET", "/api/tasks/" + alice, null, "bob").andExpect(status().isOk());
+    var list =
+        call("GET", "/api/tasks", null, "alice").andReturn().getResponse().getContentAsString();
+    assertEquals(0, json.readTree(list).size());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"POST", "PATCH"})
+  void regularUsersCannotAssign(String method) throws Exception {
+    call(
+            method,
+            method.equals("POST") ? "/api/tasks" : "/api/tasks/" + alice,
+            "{\"title\":\"Unwanted change\",\"assignee\":\"bob\"}",
+            "alice")
+        .andExpect(status().isForbidden());
+    assertEquals("Alice fixture", repository.find(alice).title());
+    assertEquals("alice", repository.find(alice).owner());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"\"missing\"", "\"\"", "\"   \"", "null", "42", "true", "{}"})
+  void invalidReassignmentIsAtomic(String value) throws Exception {
+    call(
+            "PATCH",
+            "/api/tasks/" + alice,
+            "{\"title\":\"Unwanted change\",\"assignee\":" + value + "}",
+            "manager")
+        .andExpect(status().isBadRequest());
+    assertEquals("Alice fixture", repository.find(alice).title());
+    assertEquals("alice", repository.find(alice).owner());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"\"missing\"", "\"\"", "\"   \"", "42", "true"})
+  void invalidCreateAssigneeIsRejected(String value) throws Exception {
+    call("POST", "/api/tasks", "{\"title\":\"Assigned task\",\"assignee\":" + value + "}", "admin")
+        .andExpect(status().isBadRequest());
+    assertEquals(2, repository.all().size());
+  }
+
+  @Test
+  void managerCanManageTeamTasksButCannotOverrideProtectedFields() throws Exception {
+    call("GET", "/api/tasks", null, "manager")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(2));
+    call("PATCH", "/api/tasks/" + alice, "{\"status\":\"done\"}", "manager")
+        .andExpect(status().isOk());
+    call("PATCH", "/api/tasks/" + bob, "{\"role\":\"ADMIN\"}", "manager")
+        .andExpect(status().isBadRequest());
+    call("PATCH", "/api/tasks/" + bob, "{\"owner\":\"alice\"}", "manager")
+        .andExpect(status().isBadRequest());
+    call(
+            "POST",
+            "/api/tasks",
+            "{\"title\":\"Task\",\"status\":\"done\",\"assignee\":\"alice\"}",
+            "manager")
+        .andExpect(status().isBadRequest());
+    call("DELETE", "/api/tasks/" + bob, null, "manager").andExpect(status().isNoContent());
+  }
+
+  @Test
+  void managerCanKeepTaskInOwnWorkspace() throws Exception {
+    call("POST", "/api/tasks", "{\"title\":\"Manager task\"}", "manager")
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("owner").value("manager"));
+  }
+
+  @Test
+  void successfulLoginDoesNotEraseStoredHashes() throws Exception {
+    login("manager", "Manager-demo-2026!");
+    login("manager", "Manager-demo-2026!");
+    assertTrue(
+        encoder.matches("Manager-demo-2026!", users.loadUserByUsername("manager").getPassword()));
   }
 }

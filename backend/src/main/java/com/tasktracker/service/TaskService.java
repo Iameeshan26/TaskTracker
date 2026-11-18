@@ -5,6 +5,7 @@ import com.tasktracker.dto.CreateTask;
 import com.tasktracker.exception.ApiException;
 import com.tasktracker.model.Task;
 import com.tasktracker.repository.TaskRepository;
+import com.tasktracker.repository.UserDirectory;
 import java.util.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -12,14 +13,15 @@ import org.springframework.stereotype.Service;
 @Service
 public class TaskService {
   private final TaskRepository repository;
+  private final UserDirectory users;
 
-  public TaskService(TaskRepository repository) {
+  public TaskService(TaskRepository repository, UserDirectory users) {
     this.repository = repository;
+    this.users = users;
   }
 
   private boolean allowed(Task t, Authentication a) {
-    return t.owner().equals(a.getName())
-        || a.getAuthorities().stream().anyMatch(r -> r.getAuthority().equals("ROLE_ADMIN"));
+    return t.owner().equals(a.getName()) || TaskPermissions.canManage(a);
   }
 
   private Task check(Task t, Authentication a) {
@@ -48,7 +50,8 @@ public class TaskService {
     String title = request.title().strip();
     if (title.length() < 3)
       throw ApiException.invalid("Title must contain between 3 and 100 characters");
-    return repository.create(a.getName(), title, request.description());
+    String owner = request.assignee() == null ? a.getName() : users.assignee(request.assignee(), a);
+    return repository.create(owner, title, request.description());
   }
 
   public Task patch(long id, JsonNode fields, Authentication a) {
@@ -59,7 +62,7 @@ public class TaskService {
         .fieldNames()
         .forEachRemaining(
             k -> {
-              if (!Set.of("title", "description", "status").contains(k))
+              if (!Set.of("title", "description", "status", "assignee").contains(k))
                 throw ApiException.invalid("Unknown field: " + k);
             });
     if (fields.has("title")) {
@@ -76,13 +79,18 @@ public class TaskService {
       if (!fields.get("status").isTextual()) throw ApiException.invalid("Invalid status");
       status(fields.get("status").asText());
     }
+    String assignee =
+        fields.has("assignee")
+            ? users.assignee(
+                fields.get("assignee").isTextual() ? fields.get("assignee").asText() : null, a)
+            : null;
     return repository.update(
         id,
         t -> {
           check(t, a);
           return new Task(
               t.id(),
-              t.owner(),
+              assignee == null ? t.owner() : assignee,
               fields.has("title") ? fields.get("title").asText().strip() : t.title(),
               fields.has("description")
                   ? (fields.get("description").isNull() ? null : fields.get("description").asText())

@@ -1,8 +1,10 @@
 package com.tasktracker.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tasktracker.repository.UserDirectory;
 import jakarta.servlet.http.*;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.*;
 import org.springframework.security.authentication.*;
@@ -11,7 +13,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 
@@ -23,11 +24,19 @@ public class SecurityConfig {
   }
 
   @Bean
-  UserDetailsService users(PasswordEncoder e) {
-    return new InMemoryUserDetailsManager(
-        User.withUsername("admin").password(e.encode("Admin-demo-2026!")).roles("ADMIN").build(),
-        User.withUsername("alice").password(e.encode("Alice-demo-2026!")).roles("USER").build(),
-        User.withUsername("bob").password(e.encode("Bob-demo-2026!")).roles("USER").build());
+  UserDirectory users(PasswordEncoder e) {
+    return new UserDirectory(
+        List.of(
+            User.withUsername("admin")
+                .password(e.encode("Admin-demo-2026!"))
+                .roles("ADMIN")
+                .build(),
+            User.withUsername("manager")
+                .password(e.encode("Manager-demo-2026!"))
+                .roles("MANAGER")
+                .build(),
+            User.withUsername("alice").password(e.encode("Alice-demo-2026!")).roles("USER").build(),
+            User.withUsername("bob").password(e.encode("Bob-demo-2026!")).roles("USER").build()));
   }
 
   @Bean
